@@ -1,6 +1,6 @@
 const validateJs = require("validate.js")
 const { cloneDeep } = require("lodash/fp")
-const { InternalTables } = require("../../../db/utils")
+const { InternalTables, getRowParams } = require("../../../db/utils")
 const userController = require("../user")
 const { FieldTypes } = require("../../../constants")
 const { makeExternalQuery } = require("../../../integrations/base/utils")
@@ -15,6 +15,25 @@ validateJs.extend(validateJs.validators.datetime, {
     return new Date(value).toISOString()
   },
 })
+
+// used for conversion and fetch (deprecated)
+exports.getRawInternalRows = async tableId => {
+  const db = getAppDB()
+  let rows
+  if (tableId === InternalTables.USER_METADATA) {
+    const ctx = {}
+    await userController.fetchMetadata(ctx)
+    rows = ctx.body
+  } else {
+    const response = await db.allDocs(
+      getRowParams(tableId, null, {
+        include_docs: true,
+      })
+    )
+    rows = response.rows.map(row => row.doc)
+  }
+  return rows
+}
 
 exports.getDatasourceAndQuery = async json => {
   const datasourceId = json.endpoint.datasourceId

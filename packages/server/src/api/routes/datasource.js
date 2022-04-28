@@ -47,5 +47,10 @@ router
     authorized(BUILDER),
     datasourceController.destroy
   )
+  .post(
+    "/api/datasources/:datasourceId/tables/convert",
+    authorized(BUILDER),
+    datasourceController.bulkConvert
+  )
 
 module.exports = router

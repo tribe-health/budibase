@@ -1,3 +1,4 @@
+const { getAllInternalTables } = require("../table/utils")
 const {
   generateDatasourceID,
   getDatasourceParams,
@@ -5,12 +6,23 @@ const {
   DocumentTypes,
   BudibaseInternalDB,
   getTableParams,
-} = require("../../db/utils")
-const { BuildSchemaErrors, InvalidColumns } = require("../../constants")
-const { integrations } = require("../../integrations")
-const { getDatasourceAndQuery } = require("./row/utils")
-const { invalidateDynamicVariables } = require("../../threads/utils")
+} = require("../../../db/utils")
+const {
+  BuildSchemaErrors,
+  InvalidColumns,
+  FieldTypes,
+} = require("../../../constants")
+const { integrations } = require("../../../integrations")
+const { getDatasourceAndQuery } = require("../row/utils")
+const { invalidateDynamicVariables } = require("../../../threads/utils")
 const { getAppDB } = require("@budibase/backend-core/context")
+const { InternalTables } = require("../../../db/utils")
+const {
+  processInternalTableForConversion,
+  saveExternalTable,
+  getInternalRowsForTable,
+  saveExternalRow,
+} = require("./utils")
 
 exports.fetch = async function (ctx) {
   // Get internal tables
@@ -194,6 +206,98 @@ exports.query = async function (ctx) {
   } catch (err) {
     ctx.throw(400, err)
   }
+}
+
+exports.bulkConvert = async function (ctx) {
+  const db = getAppDB()
+  const datasourceId = ctx.params.datasourceId
+  const datasource = await db.get(datasourceId)
+  if (!datasource?.plus) {
+    ctx.throw(400, "Datasource provided is not plus type.")
+  }
+  // first convert the tables
+  const tables = await getAllInternalTables()
+  let newTables = {},
+    mapping = {},
+    relationships = {},
+    handled = []
+  for (let table of tables) {
+    const tableId = table._id
+    // skip user table
+    if (tableId === InternalTables.USER_METADATA) {
+      continue
+    }
+    // process table
+    const result = processInternalTableForConversion(table, handled)
+    handled = result.handled
+    const newTable = await saveExternalTable(result.table, datasourceId)
+
+    newTables[newTable._id] = newTable
+    // create mapping between new table and old table
+    mapping[newTable._id] = tableId
+    if (result.relationships && result.relationships.length) {
+      relationships[newTable._id] = result.relationships
+    }
+  }
+
+  // now fill in the relationships
+  for (let [tableId, relatedColumns] of Object.entries(relationships)) {
+    const table = newTables[tableId]
+    for (let column of relatedColumns) {
+      const relatedId = Object.entries(mapping).find(
+        entry => entry[1] === column.tableId
+      )
+      if (relatedId) {
+        table.schema[column.name] = {
+          ...column,
+          tableId: relatedId[0],
+        }
+      }
+    }
+    // update with new format
+    newTables[tableId] = await saveExternalTable(table, datasourceId)
+  }
+
+  // now get the rows and fill out each table
+  let rowMapping = {},
+    rowRelationships = {},
+    newRows = {}
+  for (let table of Object.values(newTables)) {
+    const rows = await getInternalRowsForTable(mapping[table._id])
+    for (let row of rows) {
+      // clear the row of everything that isn't included in schema
+      const toWriteRow = {}
+      const rowId = row._id
+      for (let [key, column] of Object.entries(table.schema)) {
+        if (!row[key]) {
+          continue
+        }
+        if (column.type === FieldTypes.LINK && row[key].length) {
+          rowRelationships[JSON.stringify({ rowId, column: key })] = {
+            old: row[key].map(rel => rel._id),
+            tableId: table._id,
+          }
+        } else {
+          toWriteRow[key] = row[key]
+        }
+      }
+      const { row: newRow } = await saveExternalRow(table._id, toWriteRow)
+      rowMapping[rowId] = newRow._id
+      newRows[newRow._id] = newRow
+    }
+  }
+  // now update row relationships
+  for (let [key, relationship] of Object.entries(rowRelationships)) {
+    const { rowId, column } = JSON.parse(key)
+    const newRowId = rowMapping[rowId]
+    const newRelatedIds = relationship.old.map(id => rowMapping[id])
+    if (!newRowId || !newRelatedIds) {
+      continue
+    }
+    newRows[newRowId][column] = newRelatedIds
+    await saveExternalRow(relationship.tableId, newRows[newRowId])
+  }
+  ctx.body = [Object.values(newTables).map(tbl => tbl._id)]
 }
 
 function getErrorTables(errors, errorType) {

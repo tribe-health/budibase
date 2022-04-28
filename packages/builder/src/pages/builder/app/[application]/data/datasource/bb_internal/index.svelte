@@ -1,15 +1,19 @@
 <script>
   import { Button, Heading, Body, Layout, Modal, Divider } from "@budibase/bbui"
   import CreateTableModal from "components/backend/TableNavigator/modals/CreateTableModal.svelte"
+  import ConvertTablesModal from "components/backend/TableNavigator/modals/ConvertTablesModal.svelte"
   import ICONS from "components/backend/DatasourceNavigator/icons"
   import { tables } from "stores/backend"
   import { goto } from "@roxi/routify"
 
-  let modal
+  let createTableModal, convertTablesModal
 </script>
 
-<Modal bind:this={modal}>
+<Modal bind:this={createTableModal}>
   <CreateTableModal />
+</Modal>
+<Modal bind:this={convertTablesModal}>
+  <ConvertTablesModal />
 </Modal>
 
 <section>
@@ -39,8 +43,11 @@
         </div>
       {/each}
     </div>
-    <div>
-      <Button cta on:click={modal.show}>Create new table</Button>
+    <div class="buttons">
+      <Button cta on:click={createTableModal.show}>Create new table</Button>
+      <Button secondary on:click={convertTablesModal.show}
+        >Convert tables</Button
+      >
     </div>
   </Layout>
 </section>
@@ -78,5 +85,11 @@
   .table-list-item:hover {
     background: var(--grey-1);
     cursor: pointer;
+  }
+
+  .buttons {
+    display: flex;
+    flex-direction: row;
+    gap: var(--spacing-l);
   }
 </style>

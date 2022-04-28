@@ -54,4 +54,13 @@ export const buildDatasourceEndpoints = API => ({
       url: `/api/datasources/${datasourceId}/${datasourceRev}`,
     })
   },
+
+  convertTablesToDatasource: async (datasourceId, type = "internal") => {
+    return await API.post({
+      url: `/api/datasources/${datasourceId}/tables/convert`,
+      body: {
+        type,
+      },
+    })
+  },
 })

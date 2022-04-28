@@ -1,7 +1,6 @@
 const linkRows = require("../../../db/linkedRows")
 const {
   generateRowID,
-  getRowParams,
   getTableIDFromRowID,
   DocumentTypes,
   InternalTables,
@@ -14,7 +13,7 @@ const {
   cleanupAttachments,
 } = require("../../../utilities/rowProcessor")
 const { FieldTypes } = require("../../../constants")
-const { validate, findRow } = require("./utils")
+const { validate, findRow, getRawInternalRows } = require("./utils")
 const { fullSearch, paginatedSearch } = require("./internalSearch")
 const { getGlobalUsersFromMetadata } = require("../../../utilities/global")
 const inMemoryViews = require("../../../db/inMemoryView")
@@ -61,22 +60,6 @@ async function getView(db, viewName) {
     throw "View does not exist."
   }
   return viewInfo
-}
-
-async function getRawTableData(ctx, db, tableId) {
-  let rows
-  if (tableId === InternalTables.USER_METADATA) {
-    await userController.fetchMetadata(ctx)
-    rows = ctx.body
-  } else {
-    const response = await db.allDocs(
-      getRowParams(tableId, null, {
-        include_docs: true,
-      })
-    )
-    rows = response.rows.map(row => row.doc)
-  }
-  return rows
 }
 
 exports.patch = async ctx => {
@@ -199,7 +182,7 @@ exports.fetchView = async ctx => {
     })
   } else {
     const tableId = viewInfo.meta.tableId
-    const data = await getRawTableData(ctx, db, tableId)
+    const data = await getRawInternalRows(tableId)
     response = await inMemoryViews.runView(viewInfo, calculation, group, data)
   }
 
@@ -246,7 +229,7 @@ exports.fetch = async ctx => {
 
   const tableId = ctx.params.tableId
   let table = await db.get(tableId)
-  let rows = await getRawTableData(ctx, db, tableId)
+  let rows = await getRawInternalRows(tableId)
   return outputProcessing(table, rows)
 }
 

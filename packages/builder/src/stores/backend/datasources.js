@@ -96,6 +96,11 @@ export function createDatasourcesStore() {
         return { ...state, schemaError: null }
       })
     },
+    convert: async datasourceId => {
+      const response = await API.convertTablesToDatasource(datasourceId)
+      await tables.fetch()
+      return response
+    },
   }
 }
 
