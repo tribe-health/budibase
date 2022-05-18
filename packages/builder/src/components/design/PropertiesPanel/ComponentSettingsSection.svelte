@@ -121,11 +121,6 @@
           {componentInstance}
           {componentDefinition}
         />
-        {#if setting?.info}
-          <div class="text">
-            {@html "test"}
-          </div>
-        {/if}
       {/if}
     {/each}
     {#if idx === 0 && componentDefinition?.component?.endsWith("/fieldgroup")}
